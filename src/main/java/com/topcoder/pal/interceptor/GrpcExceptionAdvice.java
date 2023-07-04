@@ -1,21 +1,19 @@
-package com.topcoder.dal.interceptor;
+package com.topcoder.pal.interceptor;
 
-import java.sql.SQLException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.BadSqlGrammarException;
-
-import com.topcoder.dal.errors.NotImplementedException;
-
+import com.topcoder.pal.errors.NotImplementedException;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import net.devh.boot.grpc.server.advice.GrpcAdvice;
 import net.devh.boot.grpc.server.advice.GrpcExceptionHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.BadSqlGrammarException;
+
+import java.sql.SQLException;
 
 @GrpcAdvice
 public class GrpcExceptionAdvice {
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     @GrpcExceptionHandler
     public StatusRuntimeException handleError(Exception e) {

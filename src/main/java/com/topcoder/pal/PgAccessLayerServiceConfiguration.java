@@ -1,7 +1,6 @@
-package com.topcoder.dal;
+package com.topcoder.pal;
 
-import javax.sql.DataSource;
-
+import com.topcoder.pal.util.StreamJdbcTemplate;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.InjectionPoint;
 import org.springframework.context.annotation.Bean;
@@ -9,11 +8,11 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
-import com.topcoder.dal.util.StreamJdbcTemplate;
+import javax.sql.DataSource;
 
 @Configuration
 @ComponentScan("com.topcoder")
-public class DALServiceConfiguration {
+public class PgAccessLayerServiceConfiguration {
 
     @Bean
     @Scope("prototype")

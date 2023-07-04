@@ -1,17 +1,14 @@
-package com.topcoder.dal;
+package com.topcoder.pal;
 
-import com.topcoder.dal.errors.NotImplementedException;
+import com.topcoder.pal.errors.NotImplementedException;
 import com.topcoder.dal.rdb.*;
-import com.topcoder.dal.util.IdGenerator;
-import com.topcoder.dal.util.QueryHelper;
-import com.topcoder.dal.util.StreamJdbcTemplate;
-import com.topcoder.dal.util.ParameterizedExpression;
-
+import com.topcoder.pal.util.IdGenerator;
+import com.topcoder.pal.util.ParameterizedExpression;
+import com.topcoder.pal.util.QueryHelper;
+import com.topcoder.pal.util.StreamJdbcTemplate;
 import io.grpc.stub.StreamObserver;
 import jdk.jshell.spi.ExecutionControl;
 import net.devh.boot.grpc.server.service.GrpcService;
-
-import static org.jooq.impl.DSL.field;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -32,8 +29,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.jooq.impl.DSL.field;
+
 /**
- * Accessor for rational database like Informix.
+ * Accessor for rational database like Postgres.
  */
 @GrpcService
 public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
@@ -120,13 +119,13 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             String columnName = rs.getMetaData().getColumnName(i + 1);
             switch (rs.getMetaData().getColumnType(i + 1)) {
                 case java.sql.Types.DECIMAL ->
-                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getBigDecimal(i + 1), "").toString());
+                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getBigDecimal(i + 1), "").toString());
                 case java.sql.Types.INTEGER -> valueBuilder.setIntValue(rs.getInt(i + 1));
                 case java.sql.Types.BIGINT -> valueBuilder.setLongValue(rs.getLong(i + 1));
                 case java.sql.Types.FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
                 case java.sql.Types.DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
                 case java.sql.Types.VARCHAR ->
-                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
+                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
                 case java.sql.Types.BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
                 case java.sql.Types.DATE, java.sql.Types.TIMESTAMP -> valueBuilder
                         .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
@@ -139,7 +138,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
     }
 
     private Row selectQueryMapper(ResultSet rs, int rowNum, int numColumns, ColumnType[] columnTypeMap,
-            List<Column> columnList)
+                                  List<Column> columnList)
             throws SQLException {
         Row.Builder rowBuilder = Row.newBuilder();
         Value.Builder valueBuilder = Value.newBuilder();
@@ -151,13 +150,12 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 case COLUMN_TYPE_FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
                 case COLUMN_TYPE_DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
                 case COLUMN_TYPE_STRING ->
-                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
+                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
                 case COLUMN_TYPE_BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
                 case COLUMN_TYPE_DATE, COLUMN_TYPE_DATETIME -> valueBuilder
                         .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
-                default ->
-                    throw new IllegalArgumentException(
-                            "Unsupported column type: " + i + ": " + columnTypeMap[i]);
+                default -> throw new IllegalArgumentException(
+                        "Unsupported column type: " + i + ": " + columnTypeMap[i]);
             }
 
             rowBuilder.putValues(columnList.get(i).getName(), valueBuilder.build());
@@ -229,18 +227,13 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             }
             case INSERT -> {
                 final InsertQuery insertQuery = query.getInsert();
-                final boolean shouldGenerateId = insertQuery.hasIdSequence()
-                        && (insertQuery.hasIdColumn() || insertQuery.hasIdTable());
-
+                final boolean shouldGenerateId = insertQuery.hasIdColumn();
                 final ParameterizedExpression sql;
-                long id = 0;
+
+                long id;
                 if (shouldGenerateId) {
                     final String idColumn = insertQuery.getIdColumn();
-                    final String idSequence = insertQuery.getIdSequence();
-                    id = idSequence.equalsIgnoreCase("MAX")
-                            ? idGenerator.getMaxId(insertQuery.getIdTable(), insertQuery.getIdColumn())
-                            : idGenerator.getNextId(idSequence);
-                    sql = queryHelper.getInsertQuery(insertQuery, idColumn, String.valueOf(id));
+                    sql = queryHelper.getInsertQuery(insertQuery, idColumn);
                 } else {
                     sql = queryHelper.getInsertQuery(insertQuery);
                 }
@@ -249,9 +242,9 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                         Arrays.toString(sql.getParameter()));
 
                 if (con != null) {
-                    jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), con, sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
                 } else {
-                    jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), sql.getParameter());
                 }
 
                 InsertQueryResult.Builder insertQueryBuilder = InsertQueryResult.newBuilder();
@@ -297,8 +290,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                         .setDeleteResult(DeleteQueryResult.newBuilder().setAffectedRows(deleteCount).build())
                         .build();
             }
-            case QUERY_NOT_SET ->
-                throw new NotImplementedException("Unimplemented case: " + query.getQueryCase());
+            case QUERY_NOT_SET -> throw new NotImplementedException("Unimplemented case: " + query.getQueryCase());
             default -> throw new IllegalArgumentException("Unexpected value: " + query.getQueryCase());
         }
     }
@@ -318,12 +310,12 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
     @Override
     public StreamObserver<QueryRequest> streamQuery(StreamObserver<QueryResponse> responseObserver) {
         return new StreamObserver<>() {
-            Connection con = jdbcTemplate.getConnection();
+            final Connection con = jdbcTemplate.getConnection();
             private final Duration streamTimeout = Duration.ofSeconds(10);
-            Duration DEBOUNCE_INTERVAL = Duration.ofMillis(100);
-            AtomicLong lastTimerReset = new AtomicLong(System.nanoTime() - DEBOUNCE_INTERVAL.toNanos() - 1);
+            final Duration DEBOUNCE_INTERVAL = Duration.ofMillis(100);
+            final AtomicLong lastTimerReset = new AtomicLong(System.nanoTime() - DEBOUNCE_INTERVAL.toNanos() - 1);
             private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-            AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(scheduleStreamTimeout());
+            final AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(scheduleStreamTimeout());
 
             @Override
             public void onNext(QueryRequest request) {

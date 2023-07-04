@@ -1,4 +1,4 @@
-package com.topcoder.dal.util;
+package com.topcoder.pal.util;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

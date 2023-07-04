@@ -1,11 +1,11 @@
-package com.topcoder.dal;
+package com.topcoder.pal;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class DALService {
+public class PgAccessLayerService {
     public static void main(String[] args) {
-        SpringApplication.run(DALService.class, args);
+        SpringApplication.run(PgAccessLayerService.class, args);
     }
 }

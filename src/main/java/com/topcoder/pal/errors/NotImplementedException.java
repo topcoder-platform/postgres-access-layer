@@ -1,4 +1,4 @@
-package com.topcoder.dal.errors;
+package com.topcoder.pal.errors;
 
 public class NotImplementedException extends RuntimeException {
 

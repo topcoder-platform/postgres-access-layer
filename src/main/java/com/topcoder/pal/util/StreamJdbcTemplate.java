@@ -1,34 +1,20 @@
-package com.topcoder.dal.util;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.List;
-
-import javax.sql.DataSource;
+package com.topcoder.pal.util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ParameterDisposer;
-import org.springframework.jdbc.core.PreparedStatementCallback;
-import org.springframework.jdbc.core.PreparedStatementCreator;
-import org.springframework.jdbc.core.PreparedStatementSetter;
-import org.springframework.jdbc.core.ResultSetExtractor;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.RowMapperResultSetExtractor;
-import org.springframework.jdbc.core.SqlProvider;
-import org.springframework.jdbc.core.StatementCallback;
+import org.springframework.jdbc.core.*;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
+import javax.sql.DataSource;
+import java.sql.*;
+import java.util.List;
+
 public class StreamJdbcTemplate extends JdbcTemplate {
 
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     public StreamJdbcTemplate(DataSource dataSource) {
         super(dataSource);
@@ -149,8 +135,7 @@ public class StreamJdbcTemplate extends JdbcTemplate {
                 if (pss != null) {
                     pss.setValues(ps);
                 }
-                int rows = ps.executeUpdate();
-                return rows;
+                return ps.executeUpdate();
             } finally {
                 if (pss instanceof ParameterDisposer) {
                     ((ParameterDisposer) pss).cleanupParameters();
@@ -158,6 +143,49 @@ public class StreamJdbcTemplate extends JdbcTemplate {
             }
         }, con));
     }
+
+    public long insert(String sql, Connection con, @Nullable Object... args) throws DataAccessException {
+        return this.insert(sql, newArgPreparedStatementSetter(args), con);
+    }
+
+    public long insert(String sql, @Nullable PreparedStatementSetter pss, Connection con) throws DataAccessException {
+        return this.insert(new SimplePreparedStatementCreator(sql), pss, con);
+    }
+
+    private long insert(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss, Connection con)
+            throws DataAccessException {
+
+        Assert.notNull(psc, "PreparedStatementCreator must not be null");
+
+        return execute(psc, ps -> {
+            try {
+                if (pss != null) {
+                    pss.setValues(ps);
+                }
+                ResultSet rs = ps.executeQuery();
+                return rs.next() ? rs.getLong(1) : 0;
+            } finally {
+                if (pss instanceof ParameterDisposer) {
+                    ((ParameterDisposer) pss).cleanupParameters();
+                }
+            }
+        }, con);
+    }
+
+    public long insert(String sql, @Nullable Object... args) throws DataAccessException {
+        return this.insert(sql, this.newArgPreparedStatementSetter(args));
+    }
+
+    public long insert(String sql, PreparedStatementSetter pss) throws DataAccessException {
+        Connection con = null;
+        try {
+            con = this.getConnection();
+            return this.insert(sql, pss, con);
+        } finally {
+            this.closeConnection(con);
+        }
+    }
+
 
     @Nullable
     private <T> T execute(StatementCallback<T> action, Connection con) throws DataAccessException {

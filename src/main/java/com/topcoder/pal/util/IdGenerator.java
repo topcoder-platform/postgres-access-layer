@@ -1,4 +1,4 @@
-package com.topcoder.dal.util;
+package com.topcoder.pal.util;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,7 +21,7 @@ public class IdGenerator {
         long nextId = 0;
 
         if (!sequenceNames.containsKey(sequenceName)) {
-            sequenceNames.put(sequenceName, new long[] { availableId, nextId });
+            sequenceNames.put(sequenceName, new long[]{availableId, nextId});
         }
 
         final long[] ids = sequenceNames.get(sequenceName);
@@ -46,7 +46,7 @@ public class IdGenerator {
 
         nextId++;
 
-        sequenceNames.put(sequenceName, new long[] { availableId, nextId });
+        sequenceNames.put(sequenceName, new long[]{availableId, nextId});
 
         return nextId;
     }
@@ -56,7 +56,7 @@ public class IdGenerator {
         System.out.println("SQL: " + sql);
 
         return jdbcTemplate.query(sql, rs -> {
-            long[] ret = { 0, 0 };
+            long[] ret = {0, 0};
             if (rs.next()) {
                 long nextBlockStart = rs.getLong("next_block_start");
                 int blockSize = rs.getInt("block_size");

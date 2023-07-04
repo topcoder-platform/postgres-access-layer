@@ -1,8 +1,7 @@
-package com.topcoder.dal.util;
+package com.topcoder.pal.util;
 
 import com.topcoder.dal.rdb.*;
 import com.topcoder.dal.rdb.Value.ValueCase;
-
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -39,16 +38,16 @@ public class QueryHelper {
 
         ParameterizedExpression expression = new ParameterizedExpression();
         expression.setExpression("SELECT"
-                + (offset > 0 ? " SKIP " + offset : "")
-                + (limit > 0 ? " FIRST " + limit : "")
                 + (" " + String.join(",", columns) + " FROM " + tableName)
                 + (joins.length > 0 ? " " + String.join(" ", Stream.of(joins).map(toJoin).toArray(String[]::new)) : "")
                 + (!whereClause.isEmpty()
-                        ? " WHERE " + String.join(" AND ",
-                                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
-                        : "")
+                ? " WHERE " + String.join(" AND ",
+                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
+                : "")
                 + (groupByClause.length > 0 ? " GROUP BY " + String.join(",", groupByClause) : "")
-                + (orderByClause.length > 0 ? " ORDER BY " + String.join(",", orderByClause) : ""));
+                + (orderByClause.length > 0 ? " ORDER BY " + String.join(",", orderByClause) : "")
+                + (limit > 0 ? " LIMIT " + limit : "")
+                + (offset > 0 ? " OFFSET " + offset : ""));
         if (!whereClause.isEmpty()) {
             expression.setParameter(
                     whereClause.stream().filter(x -> x.parameter.length > 0).map(x -> x.getParameter()[0]).toArray());
@@ -57,10 +56,10 @@ public class QueryHelper {
     }
 
     public ParameterizedExpression getInsertQuery(InsertQuery query) {
-        return getInsertQuery(query, null, null);
+        return getInsertQuery(query, null);
     }
 
-    public ParameterizedExpression getInsertQuery(InsertQuery query, String idColumn, String idValue) {
+    public ParameterizedExpression getInsertQuery(InsertQuery query, String idColumn) {
         final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
         final List<ColumnValue> valuesToInsert = query.getColumnValueList();
 
@@ -80,19 +79,16 @@ public class QueryHelper {
         final String[] values;
         final Object[] params;
 
-        if (query.hasIdColumn() && query.hasIdSequence()) {
-            columns = Stream.concat(Stream.of(idColumn), columnsStream).toArray(String[]::new);
-            params = Stream.concat(Stream.of(idValue), paramStream).toArray();
-            values = Stream.concat(Stream.of("?"), valuesStream).toArray(String[]::new);
-        } else {
-            columns = columnsStream.toArray(String[]::new);
-            params = paramStream.toArray();
-            values = valuesStream.toArray(String[]::new);
-        }
+        columns = columnsStream.toArray(String[]::new);
+        params = paramStream.toArray();
+        values = valuesStream.toArray(String[]::new);
+
+        System.out.println("idColumn != null? :" + (idColumn != null) + " idColumn: " + idColumn);
 
         ParameterizedExpression expression = new ParameterizedExpression();
         expression.setExpression("INSERT INTO " + tableName + " (" + String.join(",", columns) + ") VALUES ("
-                + String.join(",", values) + ")");
+                + String.join(",", values) + ")"
+                + (idColumn != null ? " RETURNING " + idColumn : ""));
         expression.setParameter(params);
         return expression;
     }
@@ -224,7 +220,7 @@ public class QueryHelper {
                 && foundExpressionOrFunction.isPresent()) {
             clause = Objects.requireNonNull(clause).replace("?", foundExpressionOrFunction.get());
         } else if (value != null) {
-            parameterizedExpression.setParameter(new Object[] { value });
+            parameterizedExpression.setParameter(new Object[]{value});
         }
 
         parameterizedExpression.setExpression(clause);
