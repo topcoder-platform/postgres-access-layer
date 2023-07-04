@@ -2,13 +2,14 @@ package com.topcoder.pal;
 
 import com.topcoder.pal.errors.NotImplementedException;
 import com.topcoder.dal.rdb.*;
-import com.topcoder.pal.util.IdGenerator;
 import com.topcoder.pal.util.ParameterizedExpression;
 import com.topcoder.pal.util.QueryHelper;
 import com.topcoder.pal.util.StreamJdbcTemplate;
+
 import io.grpc.stub.StreamObserver;
 import jdk.jshell.spi.ExecutionControl;
 import net.devh.boot.grpc.server.service.GrpcService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -45,15 +46,12 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
 
     private final QueryHelper queryHelper;
 
-    private final IdGenerator idGenerator;
-
-    public DBAccessor(StreamJdbcTemplate jdbcTemplate, QueryHelper queryHelper, IdGenerator idGenerator) {
+    public DBAccessor(StreamJdbcTemplate jdbcTemplate, QueryHelper queryHelper) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionManager = new DataSourceTransactionManager(
                 Objects.requireNonNull(jdbcTemplate.getDataSource()));
         this.transactionManager.setNestedTransactionAllowed(false);
         this.queryHelper = queryHelper;
-        this.idGenerator = idGenerator;
     }
 
     /**
@@ -119,13 +117,13 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             String columnName = rs.getMetaData().getColumnName(i + 1);
             switch (rs.getMetaData().getColumnType(i + 1)) {
                 case java.sql.Types.DECIMAL ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getBigDecimal(i + 1), "").toString());
+                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getBigDecimal(i + 1), "").toString());
                 case java.sql.Types.INTEGER -> valueBuilder.setIntValue(rs.getInt(i + 1));
                 case java.sql.Types.BIGINT -> valueBuilder.setLongValue(rs.getLong(i + 1));
                 case java.sql.Types.FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
                 case java.sql.Types.DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
                 case java.sql.Types.VARCHAR ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
+                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
                 case java.sql.Types.BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
                 case java.sql.Types.DATE, java.sql.Types.TIMESTAMP -> valueBuilder
                         .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
@@ -138,7 +136,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
     }
 
     private Row selectQueryMapper(ResultSet rs, int rowNum, int numColumns, ColumnType[] columnTypeMap,
-                                  List<Column> columnList)
+            List<Column> columnList)
             throws SQLException {
         Row.Builder rowBuilder = Row.newBuilder();
         Value.Builder valueBuilder = Value.newBuilder();
@@ -150,7 +148,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 case COLUMN_TYPE_FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
                 case COLUMN_TYPE_DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
                 case COLUMN_TYPE_STRING ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
+                    valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
                 case COLUMN_TYPE_BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
                 case COLUMN_TYPE_DATE, COLUMN_TYPE_DATETIME -> valueBuilder
                         .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
@@ -242,9 +240,11 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                         Arrays.toString(sql.getParameter()));
 
                 if (con != null) {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), con, sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), con, sql.getParameter())
+                            : jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
                 } else {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), sql.getParameter())
+                            : jdbcTemplate.update(sql.getExpression(), sql.getParameter());
                 }
 
                 InsertQueryResult.Builder insertQueryBuilder = InsertQueryResult.newBuilder();
@@ -315,7 +315,8 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             final Duration DEBOUNCE_INTERVAL = Duration.ofMillis(100);
             final AtomicLong lastTimerReset = new AtomicLong(System.nanoTime() - DEBOUNCE_INTERVAL.toNanos() - 1);
             private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-            final AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(scheduleStreamTimeout());
+            final AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(
+                    scheduleStreamTimeout());
 
             @Override
             public void onNext(QueryRequest request) {

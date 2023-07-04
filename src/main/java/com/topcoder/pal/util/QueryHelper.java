@@ -41,9 +41,9 @@ public class QueryHelper {
                 + (" " + String.join(",", columns) + " FROM " + tableName)
                 + (joins.length > 0 ? " " + String.join(" ", Stream.of(joins).map(toJoin).toArray(String[]::new)) : "")
                 + (!whereClause.isEmpty()
-                ? " WHERE " + String.join(" AND ",
-                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
-                : "")
+                        ? " WHERE " + String.join(" AND ",
+                                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
+                        : "")
                 + (groupByClause.length > 0 ? " GROUP BY " + String.join(",", groupByClause) : "")
                 + (orderByClause.length > 0 ? " ORDER BY " + String.join(",", orderByClause) : "")
                 + (limit > 0 ? " LIMIT " + limit : "")
@@ -108,7 +108,6 @@ public class QueryHelper {
                 .filter(x -> findSQLExpressionOrFunction(x).isEmpty())
                 .map(QueryHelper::toValue);
 
-
         final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
                 .map(toWhereCriteria).toList();
 
@@ -125,7 +124,8 @@ public class QueryHelper {
                 + tableName
                 + " SET " + String.join(",", zip(columns, values, (c, v) -> c + "=" + v))
                 + " WHERE "
-                + String.join(" AND ", whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
+                + String.join(" AND ",
+                        whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
         expression.setParameter(params);
         return expression;
     }
@@ -143,7 +143,8 @@ public class QueryHelper {
         expression.setExpression("DELETE FROM "
                 + tableName
                 + " WHERE "
-                + String.join(" AND ", whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
+                + String.join(" AND ",
+                        whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
         expression.setParameter(
                 whereClause.stream().filter(x -> x.parameter.length > 0).map(x -> x.getParameter()[0]).toArray());
         return expression;
@@ -220,7 +221,7 @@ public class QueryHelper {
                 && foundExpressionOrFunction.isPresent()) {
             clause = Objects.requireNonNull(clause).replace("?", foundExpressionOrFunction.get());
         } else if (value != null) {
-            parameterizedExpression.setParameter(new Object[]{value});
+            parameterizedExpression.setParameter(new Object[] { value });
         }
 
         parameterizedExpression.setExpression(clause);
@@ -245,8 +246,7 @@ public class QueryHelper {
     private static Optional<String> findSQLExpressionOrFunction(Value value) {
         List<String> sqlExpressionsAndFunctions = Arrays.asList(
                 "CURRENT", "EXTEND", "DATE", "TODAY", "MDY", "YEAR", "MONTH",
-                "DAY", "HOUR", "MINUTE", "SECOND"
-        );
+                "DAY", "HOUR", "MINUTE", "SECOND");
 
         if (value.getValueCase().equals(ValueCase.DATE_VALUE)
                 || value.getValueCase().equals(ValueCase.DATETIME_VALUE)) {

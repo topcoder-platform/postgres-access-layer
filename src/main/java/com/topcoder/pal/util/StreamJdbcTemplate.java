@@ -149,7 +149,7 @@ public class StreamJdbcTemplate extends JdbcTemplate {
     }
 
     public long insert(String sql, @Nullable PreparedStatementSetter pss, Connection con) throws DataAccessException {
-        return this.insert(new SimplePreparedStatementCreator(sql), pss, con);
+        return insert(new SimplePreparedStatementCreator(sql), pss, con);
     }
 
     private long insert(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss, Connection con)
@@ -185,7 +185,6 @@ public class StreamJdbcTemplate extends JdbcTemplate {
             this.closeConnection(con);
         }
     }
-
 
     @Nullable
     private <T> T execute(StatementCallback<T> action, Connection con) throws DataAccessException {
