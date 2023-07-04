@@ -156,7 +156,7 @@ public class StreamJdbcTemplate extends JdbcTemplate {
 
     public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
             String[] returningFields, Connection con) throws DataAccessException {
-        return update(new SimplePreparedStatementCreator(sql), pss, generatedKeyHolder, con);
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, generatedKeyHolder, con);
     }
 
     public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
@@ -200,7 +200,7 @@ public class StreamJdbcTemplate extends JdbcTemplate {
 
     public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
             String[] returningFields) throws DataAccessException {
-        return update(new SimplePreparedStatementCreator(sql), pss, generatedKeyHolder);
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, generatedKeyHolder);
     }
 
     public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
