@@ -2,6 +2,7 @@ package com.topcoder.pal.util;
 
 import com.topcoder.dal.rdb.*;
 import com.topcoder.dal.rdb.Value.ValueCase;
+
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -56,10 +57,6 @@ public class QueryHelper {
     }
 
     public ParameterizedExpression getInsertQuery(InsertQuery query) {
-        return getInsertQuery(query, null);
-    }
-
-    public ParameterizedExpression getInsertQuery(InsertQuery query, String idColumn) {
         final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
         final List<ColumnValue> valuesToInsert = query.getColumnValueList();
 
@@ -83,12 +80,9 @@ public class QueryHelper {
         params = paramStream.toArray();
         values = valuesStream.toArray(String[]::new);
 
-        System.out.println("idColumn != null? :" + (idColumn != null) + " idColumn: " + idColumn);
-
         ParameterizedExpression expression = new ParameterizedExpression();
         expression.setExpression("INSERT INTO " + tableName + " (" + String.join(",", columns) + ") VALUES ("
-                + String.join(",", values) + ")"
-                + (idColumn != null ? " RETURNING " + idColumn : ""));
+                + String.join(",", values) + ")");
         expression.setParameter(params);
         return expression;
     }

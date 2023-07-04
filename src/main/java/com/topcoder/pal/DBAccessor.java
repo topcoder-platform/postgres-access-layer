@@ -231,8 +231,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 final ParameterizedExpression sql;
 
                 if (shouldGenerateId) {
-                    final String idColumn = insertQuery.getIdColumn();
-                    sql = queryHelper.getInsertQuery(insertQuery, idColumn);
+                    sql = queryHelper.getInsertQuery(insertQuery);
                 } else {
                     sql = queryHelper.getInsertQuery(insertQuery);
                 }
