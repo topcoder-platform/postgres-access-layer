@@ -21,7 +21,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -228,28 +230,37 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 final boolean shouldGenerateId = insertQuery.hasIdColumn();
                 final ParameterizedExpression sql;
 
-                long id;
                 if (shouldGenerateId) {
                     final String idColumn = insertQuery.getIdColumn();
                     sql = queryHelper.getInsertQuery(insertQuery, idColumn);
                 } else {
                     sql = queryHelper.getInsertQuery(insertQuery);
                 }
-
+                Map<String, Object> result = new HashMap<String, Object>();
                 logger.info("Executing SQL query: {} with Params: {}", field(sql.getExpression()),
                         Arrays.toString(sql.getParameter()));
 
                 if (con != null) {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), con, sql.getParameter())
-                            : jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    if (shouldGenerateId) {
+                        result = jdbcTemplate.update(sql.getExpression(), con,
+                                new String[] { insertQuery.getIdColumn() }, sql.getParameter());
+                    } else {
+                        jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    }
+
                 } else {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), sql.getParameter())
-                            : jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    if (shouldGenerateId) {
+                        result = jdbcTemplate.update(sql.getExpression(), new String[] { insertQuery.getIdColumn() },
+                                sql.getParameter());
+                    } else {
+                        jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    }
                 }
 
                 InsertQueryResult.Builder insertQueryBuilder = InsertQueryResult.newBuilder();
-                if (shouldGenerateId) {
-                    insertQueryBuilder.setLastInsertId(id);
+                if (shouldGenerateId && result != null) {
+                    insertQueryBuilder
+                            .setLastInsertId(Long.parseLong(result.get(insertQuery.getIdColumn()).toString()));
                 }
 
                 return QueryResponse.newBuilder()

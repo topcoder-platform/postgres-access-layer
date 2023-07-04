@@ -5,12 +5,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.*;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 import javax.sql.DataSource;
 import java.sql.*;
 import java.util.List;
+import java.util.Map;
 
 public class StreamJdbcTemplate extends JdbcTemplate {
 
@@ -144,46 +147,92 @@ public class StreamJdbcTemplate extends JdbcTemplate {
         }, con));
     }
 
-    public long insert(String sql, Connection con, @Nullable Object... args) throws DataAccessException {
-        return this.insert(sql, newArgPreparedStatementSetter(args), con);
-    }
-
-    public long insert(String sql, @Nullable PreparedStatementSetter pss, Connection con) throws DataAccessException {
-        return insert(new SimplePreparedStatementCreator(sql), pss, con);
-    }
-
-    private long insert(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss, Connection con)
+    public Map<String, Object> update(String sql, Connection con, String[] returningFields, @Nullable Object... args)
             throws DataAccessException {
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        update(sql, newArgPreparedStatementSetter(args), keyHolder, returningFields, con);
+        return keyHolder.getKeys();
+    }
 
-        Assert.notNull(psc, "PreparedStatementCreator must not be null");
+    public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
+            String[] returningFields, Connection con) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql), pss, generatedKeyHolder, con);
+    }
 
-        return execute(psc, ps -> {
+    public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            final KeyHolder generatedKeyHolder, Connection con) throws DataAccessException {
+        Assert.notNull(generatedKeyHolder, "KeyHolder must not be null");
+        return updateCount((Integer) execute(psc, (ps) -> {
+            int rows = 0;
             try {
                 if (pss != null) {
                     pss.setValues(ps);
                 }
-                ResultSet rs = ps.executeQuery();
-                return rs.next() ? rs.getLong(1) : 0;
+                rows = ps.executeUpdate();
             } finally {
                 if (pss instanceof ParameterDisposer) {
                     ((ParameterDisposer) pss).cleanupParameters();
                 }
             }
-        }, con);
+            List<Map<String, Object>> generatedKeys = generatedKeyHolder.getKeyList();
+            generatedKeys.clear();
+            ResultSet keys = ps.getGeneratedKeys();
+            if (keys != null) {
+                try {
+                    RowMapperResultSetExtractor<Map<String, Object>> rse = new RowMapperResultSetExtractor<Map<String, Object>>(
+                            getColumnMapRowMapper(), 1);
+                    generatedKeys.addAll(result(rse.extractData(keys)));
+                } finally {
+                    closeResultSet(keys);
+                }
+            }
+
+            return rows;
+        }, con));
     }
 
-    public long insert(String sql, @Nullable Object... args) throws DataAccessException {
-        return this.insert(sql, this.newArgPreparedStatementSetter(args));
+    public Map<String, Object> update(String sql, String[] returningFields, @Nullable Object... args)
+            throws DataAccessException {
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        update(sql, newArgPreparedStatementSetter(args), keyHolder, returningFields);
+        return keyHolder.getKeys();
     }
 
-    public long insert(String sql, PreparedStatementSetter pss) throws DataAccessException {
-        Connection con = null;
-        try {
-            con = this.getConnection();
-            return this.insert(sql, pss, con);
-        } finally {
-            this.closeConnection(con);
-        }
+    public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
+            String[] returningFields) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql), pss, generatedKeyHolder);
+    }
+
+    public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            final KeyHolder generatedKeyHolder) throws DataAccessException {
+        Assert.notNull(generatedKeyHolder, "KeyHolder must not be null");
+        return updateCount((Integer) execute(psc, (ps) -> {
+            int rows = 0;
+            try {
+                if (pss != null) {
+                    pss.setValues(ps);
+                }
+                rows = ps.executeUpdate();
+            } finally {
+                if (pss instanceof ParameterDisposer) {
+                    ((ParameterDisposer) pss).cleanupParameters();
+                }
+            }
+            List<Map<String, Object>> generatedKeys = generatedKeyHolder.getKeyList();
+            generatedKeys.clear();
+            ResultSet keys = ps.getGeneratedKeys();
+            if (keys != null) {
+                try {
+                    RowMapperResultSetExtractor<Map<String, Object>> rse = new RowMapperResultSetExtractor<Map<String, Object>>(
+                            getColumnMapRowMapper(), 1);
+                    generatedKeys.addAll(result(rse.extractData(keys)));
+                } finally {
+                    closeResultSet(keys);
+                }
+            }
+
+            return rows;
+        }));
     }
 
     @Nullable
@@ -258,15 +307,21 @@ public class StreamJdbcTemplate extends JdbcTemplate {
     private static class SimplePreparedStatementCreator implements PreparedStatementCreator, SqlProvider {
 
         private final String sql;
+        private final String[] returningFields;
 
-        public SimplePreparedStatementCreator(String sql) {
+        public SimplePreparedStatementCreator(String sql, @Nullable String... returningFields) {
             Assert.notNull(sql, "SQL must not be null");
             this.sql = sql;
+            this.returningFields = returningFields;
         }
 
         @Override
         public PreparedStatement createPreparedStatement(Connection con) throws SQLException {
-            return con.prepareStatement(this.sql);
+            if (returningFields != null && returningFields.length > 0) {
+                return con.prepareStatement(this.sql, returningFields);
+            } else {
+                return con.prepareStatement(this.sql);
+            }
         }
 
         @Override
