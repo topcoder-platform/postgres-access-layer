@@ -21,9 +21,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -227,39 +225,38 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             }
             case INSERT -> {
                 final InsertQuery insertQuery = query.getInsert();
-                final boolean shouldGenerateId = insertQuery.hasIdColumn();
-                final ParameterizedExpression sql;
+                final boolean shouldReturnFields = insertQuery.getReturningFieldsCount() > 0;
+                final ParameterizedExpression sql = queryHelper.getInsertQuery(insertQuery);
 
-                if (shouldGenerateId) {
-                    sql = queryHelper.getInsertQuery(insertQuery);
-                } else {
-                    sql = queryHelper.getInsertQuery(insertQuery);
-                }
-                Map<String, Object> result = new HashMap<String, Object>();
+                Row result = null;
+                long updated = 0;
                 logger.info("Executing SQL query: {} with Params: {}", field(sql.getExpression()),
                         Arrays.toString(sql.getParameter()));
 
                 if (con != null) {
-                    if (shouldGenerateId) {
+                    if (shouldReturnFields) {
                         result = jdbcTemplate.update(sql.getExpression(), con,
-                                new String[] { insertQuery.getIdColumn() }, sql.getParameter());
+                                insertQuery.getReturningFieldsList().toArray(new String[0]), this::rawQueryMapper,
+                                sql.getParameter());
                     } else {
-                        jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                        updated = jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
                     }
 
                 } else {
-                    if (shouldGenerateId) {
-                        result = jdbcTemplate.update(sql.getExpression(), new String[] { insertQuery.getIdColumn() },
+                    if (shouldReturnFields) {
+                        result = jdbcTemplate.update(sql.getExpression(),
+                                insertQuery.getReturningFieldsList().toArray(new String[0]), this::rawQueryMapper,
                                 sql.getParameter());
                     } else {
-                        jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                        updated = jdbcTemplate.update(sql.getExpression(), sql.getParameter());
                     }
                 }
 
                 InsertQueryResult.Builder insertQueryBuilder = InsertQueryResult.newBuilder();
-                if (shouldGenerateId && result != null) {
-                    insertQueryBuilder
-                            .setLastInsertId(Long.parseLong(result.get(insertQuery.getIdColumn()).toString()));
+                if (shouldReturnFields && result != null) {
+                    insertQueryBuilder.setRow(result);
+                } else {
+                    insertQueryBuilder.setAffectedRows(updated);
                 }
 
                 return QueryResponse.newBuilder()

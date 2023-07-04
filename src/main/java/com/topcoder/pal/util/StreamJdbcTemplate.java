@@ -5,15 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.*;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 import javax.sql.DataSource;
 import java.sql.*;
 import java.util.List;
-import java.util.Map;
 
 public class StreamJdbcTemplate extends JdbcTemplate {
 
@@ -147,92 +144,83 @@ public class StreamJdbcTemplate extends JdbcTemplate {
         }, con));
     }
 
-    public Map<String, Object> update(String sql, Connection con, String[] returningFields, @Nullable Object... args)
+    public <T> T update(String sql, Connection con, String[] returningFields, RowMapper<T> rowMapper,
+            @Nullable Object... args)
             throws DataAccessException {
-        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
-        update(sql, newArgPreparedStatementSetter(args), keyHolder, returningFields, con);
-        return keyHolder.getKeys();
+        return update(sql, newArgPreparedStatementSetter(args), returningFields, rowMapper, con);
     }
 
-    public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
-            String[] returningFields, Connection con) throws DataAccessException {
-        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, generatedKeyHolder, con);
+    public <T> T update(String sql, @Nullable PreparedStatementSetter pss, String[] returningFields,
+            RowMapper<T> rowMapper, Connection con) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, rowMapper, con);
     }
 
-    public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
-            final KeyHolder generatedKeyHolder, Connection con) throws DataAccessException {
-        Assert.notNull(generatedKeyHolder, "KeyHolder must not be null");
-        return updateCount((Integer) execute(psc, (ps) -> {
-            int rows = 0;
+    public <T> T update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            RowMapper<T> rowMapper, Connection con) throws DataAccessException {
+        return execute(psc, (ps) -> {
+            T row = null;
             try {
                 if (pss != null) {
                     pss.setValues(ps);
                 }
-                rows = ps.executeUpdate();
+                ps.executeUpdate();
             } finally {
                 if (pss instanceof ParameterDisposer) {
                     ((ParameterDisposer) pss).cleanupParameters();
                 }
             }
-            List<Map<String, Object>> generatedKeys = generatedKeyHolder.getKeyList();
-            generatedKeys.clear();
             ResultSet keys = ps.getGeneratedKeys();
             if (keys != null) {
                 try {
-                    RowMapperResultSetExtractor<Map<String, Object>> rse = new RowMapperResultSetExtractor<Map<String, Object>>(
-                            getColumnMapRowMapper(), 1);
-                    generatedKeys.addAll(result(rse.extractData(keys)));
+                    if (keys.next()) {
+                        row = rowMapper.mapRow(keys, 1);
+                    }
                 } finally {
                     closeResultSet(keys);
                 }
             }
 
-            return rows;
-        }, con));
+            return row;
+        }, con);
     }
 
-    public Map<String, Object> update(String sql, String[] returningFields, @Nullable Object... args)
+    public <T> T update(String sql, String[] returningFields, RowMapper<T> rowMapper, @Nullable Object... args)
             throws DataAccessException {
-        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
-        update(sql, newArgPreparedStatementSetter(args), keyHolder, returningFields);
-        return keyHolder.getKeys();
+        return update(sql, newArgPreparedStatementSetter(args), returningFields, rowMapper);
     }
 
-    public int update(String sql, @Nullable PreparedStatementSetter pss, final KeyHolder generatedKeyHolder,
-            String[] returningFields) throws DataAccessException {
-        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, generatedKeyHolder);
+    public <T> T update(String sql, @Nullable PreparedStatementSetter pss, String[] returningFields,
+            RowMapper<T> rowMapper) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, rowMapper);
     }
 
-    public int update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
-            final KeyHolder generatedKeyHolder) throws DataAccessException {
-        Assert.notNull(generatedKeyHolder, "KeyHolder must not be null");
-        return updateCount((Integer) execute(psc, (ps) -> {
-            int rows = 0;
+    public <T> T update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            RowMapper<T> rowMapper) throws DataAccessException {
+        return execute(psc, (ps) -> {
+            T row = null;
             try {
                 if (pss != null) {
                     pss.setValues(ps);
                 }
-                rows = ps.executeUpdate();
+                ps.executeUpdate();
             } finally {
                 if (pss instanceof ParameterDisposer) {
                     ((ParameterDisposer) pss).cleanupParameters();
                 }
             }
-            List<Map<String, Object>> generatedKeys = generatedKeyHolder.getKeyList();
-            generatedKeys.clear();
             ResultSet keys = ps.getGeneratedKeys();
             if (keys != null) {
                 try {
-                    RowMapperResultSetExtractor<Map<String, Object>> rse = new RowMapperResultSetExtractor<Map<String, Object>>(
-                            getColumnMapRowMapper(), 1);
-                    generatedKeys.addAll(result(rse.extractData(keys)));
+                    if (keys.next()) {
+                        row = rowMapper.mapRow(keys, 1);
+                    }
                 } finally {
                     closeResultSet(keys);
                 }
             }
 
-            return rows;
-        }));
+            return row;
+        });
     }
 
     @Nullable
