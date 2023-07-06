@@ -38,7 +38,7 @@
 		<dependency>
 			<groupId>com.topcoder</groupId>
 			<artifactId>tc-dal-rdb-proto</artifactId>
-			<version>1.1-SNAPSHOT</version>
+			<version>1.2-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>org.jooq</groupId>
