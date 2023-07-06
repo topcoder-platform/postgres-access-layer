@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 public class QueryHelper {
 
     public ParameterizedExpression getSelectQuery(SelectQuery query) {
-        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
+        final String tableName = query.hasSchema() ? query.getSchema() + "." + query.getTable() : query.getTable();
 
         List<Column> columnsList = query.getColumnList();
 
