@@ -27,7 +27,7 @@ public class QueryHelper {
                 .toArray(String[]::new);
 
         final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(toWhereCriteria).toList();
+                .map(this::toWhereCriteria).toList();
 
         final Join[] joins = query.getJoinList().toArray(new Join[0]);
 
@@ -51,7 +51,9 @@ public class QueryHelper {
                 + (offset > 0 ? " OFFSET " + offset : ""));
         if (!whereClause.isEmpty()) {
             expression.setParameter(
-                    whereClause.stream().filter(x -> x.parameter.length > 0).map(x -> x.getParameter()[0]).toArray());
+                    whereClause.stream().filter(x -> x.getParameter().length > 0)
+                            .flatMap(x -> Arrays.stream(x.getParameter()))
+                            .toArray());
         }
         return expression;
     }
@@ -103,14 +105,15 @@ public class QueryHelper {
                 .map(QueryHelper::toValue);
 
         final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(toWhereCriteria).toList();
+                .map(this::toWhereCriteria).toList();
 
         if (whereClause.isEmpty()) {
             throw new RuntimeException("Update query must have a where clause");
         }
         final Object[] params = Stream
                 .concat(paramsStream,
-                        whereClause.stream().filter(x -> x.parameter.length > 0).map(x -> x.getParameter()[0]))
+                        whereClause.stream().filter(x -> x.getParameter().length > 0)
+                                .flatMap(x -> Arrays.stream(x.getParameter())))
                 .toArray();
 
         ParameterizedExpression expression = new ParameterizedExpression();
@@ -128,7 +131,7 @@ public class QueryHelper {
         final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
 
         final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(toWhereCriteria).toList();
+                .map(this::toWhereCriteria).toList();
 
         if (whereClause.isEmpty()) {
             throw new IllegalArgumentException("Delete query must have a where clause");
@@ -140,7 +143,8 @@ public class QueryHelper {
                 + String.join(" AND ",
                         whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
         expression.setParameter(
-                whereClause.stream().filter(x -> x.parameter.length > 0).map(x -> x.getParameter()[0]).toArray());
+                whereClause.stream().filter(x -> x.getParameter().length > 0)
+                        .flatMap(x -> Arrays.stream(x.getParameter())).toArray());
         return expression;
     }
 
@@ -175,6 +179,39 @@ public class QueryHelper {
         return sql;
     }
 
+    private ParameterizedExpression toWhereCriteria(WhereCriteria criteria) {
+        switch (criteria.getWhereTypeCase()) {
+            case CONDITION -> toWhereCriteria(criteria.getCondition());
+            case AND -> {
+                ParameterizedExpression expression = new ParameterizedExpression();
+                List<ParameterizedExpression> list = criteria.getAnd().getWhereList().stream()
+                        .map(this::toWhereCriteria).toList();
+                expression.setExpression("(" + String.join(" AND ",
+                        list.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)) + ")");
+                expression.setParameter(
+                        list.stream().filter(x -> x.parameter.length > 0).flatMap(x -> Arrays.stream(x.getParameter()))
+                                .toArray());
+                return expression;
+            }
+            case OR -> {
+                ParameterizedExpression expression = new ParameterizedExpression();
+                List<ParameterizedExpression> list = criteria.getAnd().getWhereList().stream()
+                        .map(this::toWhereCriteria).toList();
+                expression.setExpression("(" + String.join(" OR ",
+                        list.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)) + ")");
+                expression.setParameter(
+                        list.stream().filter(x -> x.parameter.length > 0).flatMap(x -> Arrays.stream(x.getParameter()))
+                                .toArray());
+                return expression;
+            }
+            case WHERETYPE_NOT_SET ->
+                throw new UnsupportedOperationException("Unimplemented case: " + criteria.getWhereTypeCase());
+            default -> throw new IllegalArgumentException("Unexpected value: " + criteria.getWhereTypeCase());
+        }
+        return null;
+
+    }
+
     private static final Function<Join, String> toJoin = (join) -> {
         final String joinType = join.getType().toString();
         final String fromTable = join.hasFromTableSchema() ? join.getFromTableSchema() + ":" + join.getFromTable()
@@ -188,7 +225,7 @@ public class QueryHelper {
                 + fromColumn;
     };
 
-    private final Function<WhereCriteria, ParameterizedExpression> toWhereCriteria = (criteria) -> {
+    private ParameterizedExpression toWhereCriteria(WhereCondition criteria) {
         String key = criteria.getKey();
         Object value = toValue(criteria.getValue());
         ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
