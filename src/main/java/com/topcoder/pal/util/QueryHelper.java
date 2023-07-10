@@ -17,7 +17,8 @@ import java.util.stream.Stream;
 public class QueryHelper {
 
     public ParameterizedExpression getSelectQuery(SelectQuery query) {
-        final String tableName = query.hasSchema() ? query.getSchema() + "." + query.getTable() : query.getTable();
+        final String tableName = query.hasSchema() ? query.getSchema() + "." + query.getTable()
+                : query.getTable();
 
         List<Column> columnsList = query.getColumnList();
 
@@ -40,10 +41,15 @@ public class QueryHelper {
         ParameterizedExpression expression = new ParameterizedExpression();
         expression.setExpression("SELECT"
                 + (" " + String.join(",", columns) + " FROM " + tableName)
-                + (joins.length > 0 ? " " + String.join(" ", Stream.of(joins).map(toJoin).toArray(String[]::new)) : "")
+                + (joins.length > 0
+                        ? " " + String.join(" ",
+                                Stream.of(joins).map(toJoin).toArray(String[]::new))
+                        : "")
                 + (!whereClause.isEmpty()
                         ? " WHERE " + String.join(" AND ",
-                                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
+                                whereClause.stream().map(
+                                        ParameterizedExpression::getExpression)
+                                        .toArray(String[]::new))
                         : "")
                 + (groupByClause.length > 0 ? " GROUP BY " + String.join(",", groupByClause) : "")
                 + (orderByClause.length > 0 ? " ORDER BY " + String.join(",", orderByClause) : "")
@@ -59,7 +65,8 @@ public class QueryHelper {
     }
 
     public ParameterizedExpression getInsertQuery(InsertQuery query) {
-        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
+        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable()
+                : query.getTable();
         final List<ColumnValue> valuesToInsert = query.getColumnValueList();
 
         Stream<String> columnsStream = valuesToInsert.stream()
@@ -90,7 +97,8 @@ public class QueryHelper {
     }
 
     public ParameterizedExpression getUpdateQuery(UpdateQuery query) {
-        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
+        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable()
+                : query.getTable();
 
         final List<ColumnValue> valuesToUpdate = query.getColumnValueList();
         final String[] columns = valuesToUpdate.stream().map(ColumnValue::getColumn).toArray(String[]::new);
@@ -122,13 +130,15 @@ public class QueryHelper {
                 + " SET " + String.join(",", zip(columns, values, (c, v) -> c + "=" + v))
                 + " WHERE "
                 + String.join(" AND ",
-                        whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
+                        whereClause.stream().map(ParameterizedExpression::getExpression)
+                                .toArray(String[]::new)));
         expression.setParameter(params);
         return expression;
     }
 
     public ParameterizedExpression getDeleteQuery(DeleteQuery query) {
-        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable() : query.getTable();
+        final String tableName = query.hasSchema() ? query.getSchema() + ":" + query.getTable()
+                : query.getTable();
 
         final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
                 .map(this::toWhereCriteria).toList();
@@ -141,7 +151,8 @@ public class QueryHelper {
                 + tableName
                 + " WHERE "
                 + String.join(" AND ",
-                        whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)));
+                        whereClause.stream().map(ParameterizedExpression::getExpression)
+                                .toArray(String[]::new)));
         expression.setParameter(
                 whereClause.stream().filter(x -> x.getParameter().length > 0)
                         .flatMap(x -> Arrays.stream(x.getParameter())).toArray());
@@ -165,8 +176,10 @@ public class QueryHelper {
         // Whitelist characters
         StringBuilder safeSQL = new StringBuilder();
         for (char c : sql.toCharArray()) {
-            if (Character.isLetterOrDigit(c) || c == ' ' || c == ',' || c == '(' || c == ')' || c == '=' || c == '<'
-                    || c == '>' || c == '_' || c == ':' || c == '.' || c == '-' || c == '+' || c == '*' || c == '\'') {
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == ',' || c == '(' || c == ')' || c == '='
+                    || c == '<'
+                    || c == '>' || c == '_' || c == ':' || c == '.' || c == '-' || c == '+'
+                    || c == '*' || c == '\'') {
                 safeSQL.append(c);
             }
         }
@@ -187,9 +200,12 @@ public class QueryHelper {
                 List<ParameterizedExpression> list = criteria.getAnd().getWhereList().stream()
                         .map(this::toWhereCriteria).toList();
                 expression.setExpression("(" + String.join(" AND ",
-                        list.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)) + ")");
+                        list.stream().map(ParameterizedExpression::getExpression)
+                                .toArray(String[]::new))
+                        + ")");
                 expression.setParameter(
-                        list.stream().filter(x -> x.parameter.length > 0).flatMap(x -> Arrays.stream(x.getParameter()))
+                        list.stream().filter(x -> x.parameter.length > 0)
+                                .flatMap(x -> Arrays.stream(x.getParameter()))
                                 .toArray());
                 return expression;
             }
@@ -198,15 +214,20 @@ public class QueryHelper {
                 List<ParameterizedExpression> list = criteria.getAnd().getWhereList().stream()
                         .map(this::toWhereCriteria).toList();
                 expression.setExpression("(" + String.join(" OR ",
-                        list.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new)) + ")");
+                        list.stream().map(ParameterizedExpression::getExpression)
+                                .toArray(String[]::new))
+                        + ")");
                 expression.setParameter(
-                        list.stream().filter(x -> x.parameter.length > 0).flatMap(x -> Arrays.stream(x.getParameter()))
+                        list.stream().filter(x -> x.parameter.length > 0)
+                                .flatMap(x -> Arrays.stream(x.getParameter()))
                                 .toArray());
                 return expression;
             }
             case WHERETYPE_NOT_SET ->
-                throw new UnsupportedOperationException("Unimplemented case: " + criteria.getWhereTypeCase());
-            default -> throw new IllegalArgumentException("Unexpected value: " + criteria.getWhereTypeCase());
+                throw new UnsupportedOperationException(
+                        "Unimplemented case: " + criteria.getWhereTypeCase());
+            default ->
+                throw new IllegalArgumentException("Unexpected value: " + criteria.getWhereTypeCase());
         }
         return null;
 
@@ -214,9 +235,11 @@ public class QueryHelper {
 
     private static final Function<Join, String> toJoin = (join) -> {
         final String joinType = join.getType().toString();
-        final String fromTable = join.hasFromTableSchema() ? join.getFromTableSchema() + ":" + join.getFromTable()
+        final String fromTable = join.hasFromTableSchema()
+                ? join.getFromTableSchema() + ":" + join.getFromTable()
                 : join.getFromTable();
-        final String joinTable = join.hasJoinTableSchema() ? join.getJoinTableSchema() + ":" + join.getJoinTable()
+        final String joinTable = join.hasJoinTableSchema()
+                ? join.getJoinTableSchema() + ":" + join.getJoinTable()
                 : join.getJoinTable();
         final String fromColumn = join.getFromColumn();
         final String joinColumn = join.getJoinColumn();
@@ -225,7 +248,7 @@ public class QueryHelper {
                 + fromColumn;
     };
 
-    private ParameterizedExpression toWhereCriteria(WhereCondition criteria) {
+    private ParameterizedExpression toWhereCriteria(Condition criteria) {
         String key = criteria.getKey();
         Object value = toValue(criteria.getValue());
         ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
