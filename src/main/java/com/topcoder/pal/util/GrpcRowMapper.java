@@ -8,19 +8,19 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.JdbcUtils;
 import org.springframework.lang.Nullable;
 
-import com.topcoder.dal.rdb.Column;
 import com.topcoder.dal.rdb.Row;
+import com.topcoder.dal.rdb.TypedColumn;
 import com.topcoder.dal.rdb.Value;
 
 public class GrpcRowMapper implements RowMapper<Row> {
-    private final List<Column> columnList;
+    private final List<TypedColumn> columnList;
     private final boolean columnListProvided;
 
     public GrpcRowMapper() {
         this(null);
     }
 
-    public GrpcRowMapper(@Nullable List<Column> columnList) {
+    public GrpcRowMapper(@Nullable List<TypedColumn> columnList) {
         this.columnList = columnList;
         this.columnListProvided = columnList != null;
     }

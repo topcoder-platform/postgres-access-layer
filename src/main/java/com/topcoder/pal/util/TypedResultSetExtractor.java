@@ -8,8 +8,8 @@ import java.util.List;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.lang.Nullable;
 
-import com.topcoder.dal.rdb.Column;
 import com.topcoder.dal.rdb.Row;
+import com.topcoder.dal.rdb.TypedColumn;
 
 public class TypedResultSetExtractor implements ResultSetExtractor<List<Row>> {
     private final GrpcRowMapper rowMapper;
@@ -23,11 +23,11 @@ public class TypedResultSetExtractor implements ResultSetExtractor<List<Row>> {
         this(null, rowsExpected);
     }
 
-    public TypedResultSetExtractor(@Nullable List<Column> columnList) {
+    public TypedResultSetExtractor(@Nullable List<TypedColumn> columnList) {
         this(columnList, 0);
     }
 
-    public TypedResultSetExtractor(@Nullable List<Column> columnList, int rowsExpected) {
+    public TypedResultSetExtractor(@Nullable List<TypedColumn> columnList, int rowsExpected) {
         this.rowsExpected = rowsExpected;
         this.rowMapper = new GrpcRowMapper(columnList);
     }

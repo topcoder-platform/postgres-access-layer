@@ -152,7 +152,7 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 logger.info("Executing SQL query: {} with Params: {}", field(sql.getExpression()),
                         Arrays.toString(sql.getParameter()));
 
-                final List<Column> columnList = selectQuery.getColumnList();
+                final List<TypedColumn> columnList = selectQuery.getColumnList();
                 List<Row> rows;
                 if (con != null) {
                     rows = jdbcTemplate.query(sql.getExpression(), new TypedResultSetExtractor(columnList), con,
