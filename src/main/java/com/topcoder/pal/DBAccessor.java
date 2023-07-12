@@ -178,8 +178,8 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 if (con != null) {
                     if (shouldReturnFields) {
                         result = jdbcTemplate.update(sql.getExpression(), con,
-                                insertQuery.getReturningFieldsList().toArray(new String[0]), new GrpcRowMapper(),
-                                sql.getParameter());
+                                insertQuery.getReturningFieldsList().toArray(new String[0]),
+                                new GrpcRowMapper(null, insertQuery.getReturningFieldsList()), sql.getParameter());
                     } else {
                         updated = jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
                     }
@@ -187,8 +187,8 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 } else {
                     if (shouldReturnFields) {
                         result = jdbcTemplate.update(sql.getExpression(),
-                                insertQuery.getReturningFieldsList().toArray(new String[0]), new GrpcRowMapper(),
-                                sql.getParameter());
+                                insertQuery.getReturningFieldsList().toArray(new String[0]),
+                                new GrpcRowMapper(null, insertQuery.getReturningFieldsList()), sql.getParameter());
                     } else {
                         updated = jdbcTemplate.update(sql.getExpression(), sql.getParameter());
                     }

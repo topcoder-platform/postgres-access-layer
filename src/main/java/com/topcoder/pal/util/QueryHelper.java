@@ -6,9 +6,9 @@ import com.topcoder.dal.rdb.Value.ValueCase;
 
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -24,8 +24,9 @@ public class QueryHelper {
 
         final String[] columns = columnsList.stream().map(this::buildName).toArray(String[]::new);
 
-        final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(this::toWhereCriteria).toList();
+        final List<ParameterizedExpression> whereClause = query.getWhereList().stream().map(this::toWhereCriteria)
+                .toList();
+        final List<ParameterizedExpression> joinClause = query.getJoinList().stream().map(this::toJoin).toList();
 
         final String[] groupByClause = query.getGroupByList().stream().map(this::buildName).toArray(String[]::new);
         final String[] orderByClause = query.getOrderByList().stream().map(this::buildName).toArray(String[]::new);
@@ -37,24 +38,24 @@ public class QueryHelper {
         expression.setExpression("SELECT"
                 + (" " + String.join(",", columns) + " FROM " + tableName)
                 + (query.getJoinCount() > 0
+                        ? " " + String.join(" ", query.getJoinList().stream().map(toJoin).toArray(String[]::new))
+                        : "")
+                + (!joinClause.isEmpty()
                         ? " " + String.join(" ",
-                                query.getJoinList().stream().map(toJoin).toArray(String[]::new))
+                                joinClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
                         : "")
                 + (!whereClause.isEmpty()
                         ? " WHERE " + String.join(" AND ",
-                                whereClause.stream().map(
-                                        ParameterizedExpression::getExpression)
-                                        .toArray(String[]::new))
+                                whereClause.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
                         : "")
                 + (groupByClause.length > 0 ? " GROUP BY " + String.join(",", groupByClause) : "")
                 + (orderByClause.length > 0 ? " ORDER BY " + String.join(",", orderByClause) : "")
                 + (limit > 0 ? " LIMIT " + limit : "")
                 + (offset > 0 ? " OFFSET " + offset : ""));
-        if (!whereClause.isEmpty()) {
-            expression.setParameter(
-                    whereClause.stream().filter(x -> x.getParameter().length > 0)
-                            .flatMap(x -> Arrays.stream(x.getParameter()))
-                            .toArray());
+
+        if (!whereClause.isEmpty() || !joinClause.isEmpty()) {
+            expression.setParameter(Stream.concat(joinClause.stream(), whereClause.stream())
+                    .filter(x -> x.getParameter().length > 0).flatMap(x -> Arrays.stream(x.getParameter())).toArray());
         }
         return expression;
     }
@@ -85,34 +86,24 @@ public class QueryHelper {
         final String[] columns = valuesToUpdate.stream().map(ColumnValue::getColumn).toArray(String[]::new);
 
         final String[] values = valuesToUpdate.stream().map(ColumnValue::getValue)
-                .map(x -> findSQLExpressionOrFunction(x).orElse("?"))
-                .toArray(String[]::new);
+                .map(x -> findSQLExpressionOrFunction(x).orElse("?")).toArray(String[]::new);
 
-        final Stream<Object> paramsStream = valuesToUpdate.stream()
-                .map(ColumnValue::getValue)
-                .filter(x -> findSQLExpressionOrFunction(x).isEmpty())
-                .map(QueryHelper::toValue);
+        final Stream<Object> paramsStream = valuesToUpdate.stream().map(ColumnValue::getValue)
+                .filter(x -> findSQLExpressionOrFunction(x).isEmpty()).map(QueryHelper::toValue);
 
-        final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(this::toWhereCriteria).toList();
+        final Stream<ParameterizedExpression> whereClause = query.getWhereList().stream().map(this::toWhereCriteria);
 
-        if (whereClause.isEmpty()) {
+        if (whereClause.findAny().isEmpty()) {
             throw new RuntimeException("Update query must have a where clause");
         }
-        final Object[] params = Stream
-                .concat(paramsStream,
-                        whereClause.stream().filter(x -> x.getParameter().length > 0)
-                                .flatMap(x -> Arrays.stream(x.getParameter())))
+        final Object[] params = Stream.concat(paramsStream,
+                whereClause.filter(x -> x.getParameter().length > 0).flatMap(x -> Arrays.stream(x.getParameter())))
                 .toArray();
 
         ParameterizedExpression expression = new ParameterizedExpression();
-        expression.setExpression("UPDATE "
-                + tableName
-                + " SET " + String.join(",", zip(columns, values, (c, v) -> c + "=" + v))
-                + " WHERE "
-                + String.join(" AND ",
-                        whereClause.stream().map(ParameterizedExpression::getExpression)
-                                .toArray(String[]::new)));
+        expression.setExpression("UPDATE " + tableName + " SET "
+                + String.join(",", zip(columns, values, (c, v) -> c + "=" + v)) + " WHERE "
+                + String.join(" AND ", whereClause.map(ParameterizedExpression::getExpression).toArray(String[]::new)));
         expression.setParameter(params);
         return expression;
     }
@@ -120,22 +111,16 @@ public class QueryHelper {
     public ParameterizedExpression getDeleteQuery(DeleteQuery query) {
         final String tableName = buildName(query);
 
-        final List<ParameterizedExpression> whereClause = query.getWhereList().stream()
-                .map(this::toWhereCriteria).toList();
+        final Stream<ParameterizedExpression> whereClause = query.getWhereList().stream().map(this::toWhereCriteria);
 
-        if (whereClause.isEmpty()) {
+        if (whereClause.findAny().isEmpty()) {
             throw new IllegalArgumentException("Delete query must have a where clause");
         }
         ParameterizedExpression expression = new ParameterizedExpression();
-        expression.setExpression("DELETE FROM "
-                + tableName
-                + " WHERE "
-                + String.join(" AND ",
-                        whereClause.stream().map(ParameterizedExpression::getExpression)
-                                .toArray(String[]::new)));
-        expression.setParameter(
-                whereClause.stream().filter(x -> x.getParameter().length > 0)
-                        .flatMap(x -> Arrays.stream(x.getParameter())).toArray());
+        expression.setExpression("DELETE FROM " + tableName + " WHERE "
+                + String.join(" AND ", whereClause.map(ParameterizedExpression::getExpression).toArray(String[]::new)));
+        expression.setParameter(whereClause.filter(x -> x.getParameter().length > 0)
+                .flatMap(x -> Arrays.stream(x.getParameter())).toArray());
         return expression;
     }
 
@@ -156,10 +141,8 @@ public class QueryHelper {
         // Whitelist characters
         StringBuilder safeSQL = new StringBuilder();
         for (char c : sql.toCharArray()) {
-            if (Character.isLetterOrDigit(c) || c == ' ' || c == ',' || c == '(' || c == ')' || c == '='
-                    || c == '<'
-                    || c == '>' || c == '_' || c == ':' || c == '.' || c == '-' || c == '+'
-                    || c == '*' || c == '\'') {
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == ',' || c == '(' || c == ')' || c == '=' || c == '<'
+                    || c == '>' || c == '_' || c == ':' || c == '.' || c == '-' || c == '+' || c == '*' || c == '\'') {
                 safeSQL.append(c);
             }
         }
@@ -173,25 +156,22 @@ public class QueryHelper {
     }
 
     private ParameterizedExpression toWhereCriteria(WhereCriteria criteria) {
-        ParameterizedExpression pe;
+        ParameterizedExpression expression;
         switch (criteria.getWhereTypeCase()) {
-            case CONDITION -> pe = toWhereCriteria(criteria.getCondition());
+            case CONDITION -> expression = toWhereCriteria(criteria.getCondition());
             case AND -> {
-                ParameterizedExpression expression = new ParameterizedExpression();
+                expression = new ParameterizedExpression();
                 List<ParameterizedExpression> list = criteria.getAnd().getWhereList().stream()
                         .map(this::toWhereCriteria).toList();
-                expression.setExpression("(" + String.join(" AND ",
-                        list.stream().map(ParameterizedExpression::getExpression)
-                                .toArray(String[]::new))
+                expression.setExpression("("
+                        + String.join(" AND ",
+                                list.stream().map(ParameterizedExpression::getExpression).toArray(String[]::new))
                         + ")");
-                expression.setParameter(
-                        list.stream().filter(x -> x.parameter.length > 0)
-                                .flatMap(x -> Arrays.stream(x.getParameter()))
-                                .toArray());
-                pe = expression;
+                expression.setParameter(list.stream().filter(x -> x.getParameter().length > 0)
+                        .flatMap(x -> Arrays.stream(x.getParameter())).toArray());
             }
             case OR -> {
-                ParameterizedExpression expression = new ParameterizedExpression();
+                expression = new ParameterizedExpression();
                 List<ParameterizedExpression> list = criteria.getOr().getWhereList().stream()
                         .map(this::toWhereCriteria).toList();
                 expression.setExpression("(" + String.join(" OR ",
@@ -199,10 +179,9 @@ public class QueryHelper {
                                 .toArray(String[]::new))
                         + ")");
                 expression.setParameter(
-                        list.stream().filter(x -> x.parameter.length > 0)
+                        list.stream().filter(x -> x.getParameter().length > 0)
                                 .flatMap(x -> Arrays.stream(x.getParameter()))
                                 .toArray());
-                pe = expression;
             }
             case WHERETYPE_NOT_SET ->
                 throw new UnsupportedOperationException(
@@ -210,7 +189,32 @@ public class QueryHelper {
             default ->
                 throw new IllegalArgumentException("Unexpected value: " + criteria.getWhereTypeCase());
         }
-        return pe;
+        return expression;
+    }
+
+    private ParameterizedExpression toJoin(Join join) {
+        if (join.getConditionsCount() == 0) {
+            throw new IllegalArgumentException("At least 1 join condition is required");
+        }
+        List<Object> parameters = new ArrayList<>();
+        String[] conditions = new String[join.getConditionsCount()];
+
+        StringBuilder clauseSb = new StringBuilder(getJoinType(join.getType())).append(" ")
+                .append(buildName(join.getTable())).append(" ON ");
+        for (int i = 0; i < join.getConditionsCount(); i++) {
+            JoinCondition condition = join.getConditions(i);
+            StringBuilder conditionSb = new StringBuilder(buildName(condition.getLeft()))
+                    .append(getOperator(condition.getOperator()));
+            if (condition.getRightCase().equals(RightCase.COLUMN)) {
+                conditionSb.append(buildName(condition.getColumn()));
+            } else {
+                conditionSb.append(" ? ");
+                parameters.add(toValue(condition.getValue()));
+            }
+            conditions[i] = conditionSb.toString();
+        }
+        clauseSb.append(String.join(" AND ", conditions));
+        return new ParameterizedExpression(clauseSb.toString(), parameters.toArray());
     }
 
     private final Function<Join, String> toJoin = (join) -> {
@@ -260,39 +264,73 @@ public class QueryHelper {
     }
 
     private ParameterizedExpression toWhereCriteria(Condition criteria) {
-        String key = buildName(criteria.getKey());
-        Object value = toValue(criteria.getValue());
-        ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
-
-        String clause = switch (criteria.getOperator()) {
-            case OPERATOR_EQUAL -> key + " = ?";
-            case OPERATOR_NOT_EQUAL -> key + " <> ?";
-            case OPERATOR_GREATER_THAN -> key + " > ?";
-            case OPERATOR_GREATER_THAN_OR_EQUAL -> key + " >= ?";
-            case OPERATOR_LESS_THAN -> key + " < ?";
-            case OPERATOR_LESS_THAN_OR_EQUAL -> key + " <= ?";
-            case OPERATOR_LIKE -> key + " LIKE ?";
-            case OPERATOR_NOT_LIKE -> key + " NOT LIKE ?";
-            case OPERATOR_IN -> key + " IN (?)";
-            case OPERATOR_NOT_IN -> key + " NOT IN (?)";
-            case OPERATOR_IS_NULL -> key + " IS NULL";
-            case OPERATOR_IS_NOT_NULL -> key + " IS NOT NULL";
-            default -> null;
+        return switch (criteria.getOperator()) {
+            case OPERATOR_EQUAL -> buildWhereClause(criteria.getKey(), "=", criteria.getValue(0));
+            case OPERATOR_NOT_EQUAL -> buildWhereClause(criteria.getKey(), "<>", criteria.getValue(0));
+            case OPERATOR_GREATER_THAN -> buildWhereClause(criteria.getKey(), ">", criteria.getValue(0));
+            case OPERATOR_GREATER_THAN_OR_EQUAL -> buildWhereClause(criteria.getKey(), ">=", criteria.getValue(0));
+            case OPERATOR_LESS_THAN -> buildWhereClause(criteria.getKey(), "<", criteria.getValue(0));
+            case OPERATOR_LESS_THAN_OR_EQUAL -> buildWhereClause(criteria.getKey(), "<=", criteria.getValue(0));
+            case OPERATOR_LIKE -> buildWhereClause(criteria.getKey(), "LIKE", criteria.getValue(0));
+            case OPERATOR_NOT_LIKE -> buildWhereClause(criteria.getKey(), "NOT LIKE", criteria.getValue(0));
+            case OPERATOR_IN -> buildWhereClause(criteria.getKey(), "IN", criteria.getValueList());
+            case OPERATOR_NOT_IN -> buildWhereClause(criteria.getKey(), "NOT IN", criteria.getValueList());
+            case OPERATOR_IS_NULL -> buildWhereClause(criteria.getKey(), "IS NULL");
+            case OPERATOR_IS_NOT_NULL -> buildWhereClause(criteria.getKey(), "IS NOT NULL");
+            case OPERATOR_UNSPECIFIED ->
+                throw new UnsupportedOperationException("Unimplemented case: " + criteria.getOperator());
+            case UNRECOGNIZED ->
+                throw new UnsupportedOperationException("Unimplemented case: " + criteria.getOperator());
+            default -> throw new IllegalArgumentException("Unexpected value: " + criteria.getOperator());
         };
-        Optional<String> foundExpressionOrFunction = findSQLExpressionOrFunction(criteria.getValue());
-
-        if (!criteria.getOperator().equals(Operator.OPERATOR_IS_NULL)
-                && !criteria.getOperator().equals(Operator.OPERATOR_IS_NOT_NULL)
-                && foundExpressionOrFunction.isPresent()) {
-            clause = Objects.requireNonNull(clause).replace("?", foundExpressionOrFunction.get());
-        } else if (value != null) {
-            parameterizedExpression.setParameter(new Object[] { value });
-        }
-
-        parameterizedExpression.setExpression(clause);
-
-        return parameterizedExpression;
     };
+
+    private ParameterizedExpression buildWhereClause(Column column, String operator, Value value) {
+        String key = buildName(column);
+        if (value.getValueCase().equals(Value.ValueCase.VALUE_NOT_SET)) {
+            throw new IllegalArgumentException("Value must be set for " + key);
+        }
+        ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
+        String clause = key + " " + operator + " ";
+        Optional<String> foundExpressionOrFunction = findSQLExpressionOrFunction(value);
+        if (foundExpressionOrFunction.isPresent()) {
+            clause = clause + foundExpressionOrFunction.get();
+        } else {
+            clause = clause + "?";
+            parameterizedExpression.setParameter(new Object[] { toValue(value) });
+        }
+        parameterizedExpression.setExpression(clause);
+        return parameterizedExpression;
+    }
+
+    private ParameterizedExpression buildWhereClause(Column column, String operator, List<Value> values) {
+        String key = buildName(column);
+        ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
+        List<String> strValues = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        for (Value value : values) {
+            if (value.getValueCase().equals(Value.ValueCase.VALUE_NOT_SET)) {
+                throw new IllegalArgumentException("Value must be set for " + key);
+            }
+            Optional<String> foundExpressionOrFunction = findSQLExpressionOrFunction(value);
+            if (foundExpressionOrFunction.isPresent()) {
+                strValues.add(foundExpressionOrFunction.get());
+            } else {
+                strValues.add("?");
+                parameters.add(toValue(value));
+            }
+        }
+        parameterizedExpression.setExpression(key + " " + operator + " (" + String.join(",", strValues) + ")");
+        parameterizedExpression.setParameter(parameters.toArray());
+        return parameterizedExpression;
+    }
+
+    private ParameterizedExpression buildWhereClause(Column column, String operator) {
+        String key = buildName(column);
+        ParameterizedExpression parameterizedExpression = new ParameterizedExpression();
+        parameterizedExpression.setExpression(key + " " + operator);
+        return parameterizedExpression;
+    }
 
     private static Object toValue(Value value) {
         return switch (value.getValueCase()) {
@@ -310,8 +348,7 @@ public class QueryHelper {
 
     private static Optional<String> findSQLExpressionOrFunction(Value value) {
         List<String> sqlExpressionsAndFunctions = Arrays.asList(
-                "CURRENT", "EXTEND", "DATE", "TODAY", "MDY", "YEAR", "MONTH",
-                "DAY", "HOUR", "MINUTE", "SECOND");
+                "NOW", "CURRENT", "EXTEND", "DATE", "TODAY", "MDY", "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND");
 
         if (value.getValueCase().equals(ValueCase.DATE_VALUE)
                 || value.getValueCase().equals(ValueCase.DATETIME_VALUE)) {

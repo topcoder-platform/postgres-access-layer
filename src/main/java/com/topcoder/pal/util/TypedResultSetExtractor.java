@@ -29,7 +29,7 @@ public class TypedResultSetExtractor implements ResultSetExtractor<List<Row>> {
 
     public TypedResultSetExtractor(@Nullable List<TypedColumn> columnList, int rowsExpected) {
         this.rowsExpected = rowsExpected;
-        this.rowMapper = new GrpcRowMapper(columnList);
+        this.rowMapper = new GrpcRowMapper(columnList, null);
     }
 
     public List<Row> extractData(ResultSet rs) throws SQLException {
