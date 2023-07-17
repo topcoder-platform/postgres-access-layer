@@ -17,6 +17,9 @@ import java.util.stream.Stream;
 @Component
 public class QueryHelper {
 
+    final static List<String> sqlExpressionsAndFunctions = Arrays.asList(
+            "NOW", "CURRENT", "EXTEND", "DATE", "TODAY", "MDY", "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND");
+
     public ParameterizedExpression getSelectQuery(SelectQuery query) {
         final String tableName = buildName(query);
 
@@ -347,20 +350,21 @@ public class QueryHelper {
     }
 
     private static Optional<String> findSQLExpressionOrFunction(Value value) {
-        List<String> sqlExpressionsAndFunctions = Arrays.asList(
-                "NOW", "CURRENT", "EXTEND", "DATE", "TODAY", "MDY", "YEAR", "MONTH", "DAY", "HOUR", "MINUTE", "SECOND");
-
-        if (value.getValueCase().equals(ValueCase.DATE_VALUE)
-                || value.getValueCase().equals(ValueCase.DATETIME_VALUE)) {
-            String valueStr = value.getValueCase().equals(ValueCase.DATE_VALUE)
-                    ? value.getDateValue()
-                    : value.getDatetimeValue();
-
+        String valueStr;
+        if (value.getValueCase().equals(ValueCase.DATETIME_VALUE)) {
+            valueStr = value.getDatetimeValue();
+            if (valueStr.equals("$NOW")) {
+                return Optional.of("NOW()::TIMESTAMP");
+            }
+            if (sqlExpressionsAndFunctions.stream().anyMatch(valueStr::contains)) {
+                return Optional.of(valueStr);
+            }
+        } else if (value.getValueCase().equals(ValueCase.DATE_VALUE)) {
+            valueStr = value.getDateValue();
             if (sqlExpressionsAndFunctions.stream().anyMatch(valueStr::contains)) {
                 return Optional.of(valueStr);
             }
         }
-
         return Optional.empty();
     }
 
