@@ -2,13 +2,16 @@ package com.topcoder.pal;
 
 import com.topcoder.pal.errors.NotImplementedException;
 import com.topcoder.dal.rdb.*;
-import com.topcoder.pal.util.IdGenerator;
+import com.topcoder.pal.util.GrpcRowMapper;
 import com.topcoder.pal.util.ParameterizedExpression;
 import com.topcoder.pal.util.QueryHelper;
 import com.topcoder.pal.util.StreamJdbcTemplate;
+import com.topcoder.pal.util.TypedResultSetExtractor;
+
 import io.grpc.stub.StreamObserver;
 import jdk.jshell.spi.ExecutionControl;
 import net.devh.boot.grpc.server.service.GrpcService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -16,8 +19,6 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -45,15 +46,12 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
 
     private final QueryHelper queryHelper;
 
-    private final IdGenerator idGenerator;
-
-    public DBAccessor(StreamJdbcTemplate jdbcTemplate, QueryHelper queryHelper, IdGenerator idGenerator) {
+    public DBAccessor(StreamJdbcTemplate jdbcTemplate, QueryHelper queryHelper) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionManager = new DataSourceTransactionManager(
                 Objects.requireNonNull(jdbcTemplate.getDataSource()));
         this.transactionManager.setNestedTransactionAllowed(false);
         this.queryHelper = queryHelper;
-        this.idGenerator = idGenerator;
     }
 
     /**
@@ -112,57 +110,6 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
         return result;
     }
 
-    private Row rawQueryMapper(ResultSet rs, int rowNum) throws SQLException {
-        Row.Builder rowBuilder = Row.newBuilder();
-        Value.Builder valueBuilder = Value.newBuilder();
-        for (int i = 0; i < rs.getMetaData().getColumnCount(); i++) {
-            String columnName = rs.getMetaData().getColumnName(i + 1);
-            switch (rs.getMetaData().getColumnType(i + 1)) {
-                case java.sql.Types.DECIMAL ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getBigDecimal(i + 1), "").toString());
-                case java.sql.Types.INTEGER -> valueBuilder.setIntValue(rs.getInt(i + 1));
-                case java.sql.Types.BIGINT -> valueBuilder.setLongValue(rs.getLong(i + 1));
-                case java.sql.Types.FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
-                case java.sql.Types.DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
-                case java.sql.Types.VARCHAR ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
-                case java.sql.Types.BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
-                case java.sql.Types.DATE, java.sql.Types.TIMESTAMP -> valueBuilder
-                        .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
-                default -> throw new IllegalArgumentException(
-                        "Unsupported column type: " + rs.getMetaData().getColumnType(i + 1));
-            }
-            rowBuilder.putValues(columnName, valueBuilder.build());
-        }
-        return rowBuilder.build();
-    }
-
-    private Row selectQueryMapper(ResultSet rs, int rowNum, int numColumns, ColumnType[] columnTypeMap,
-                                  List<Column> columnList)
-            throws SQLException {
-        Row.Builder rowBuilder = Row.newBuilder();
-        Value.Builder valueBuilder = Value.newBuilder();
-
-        for (int i = 0; i < numColumns; i++) {
-            switch (columnTypeMap[i]) {
-                case COLUMN_TYPE_INT -> valueBuilder.setIntValue(rs.getInt(i + 1));
-                case COLUMN_TYPE_LONG -> valueBuilder.setLongValue(rs.getLong(i + 1));
-                case COLUMN_TYPE_FLOAT -> valueBuilder.setFloatValue(rs.getFloat(i + 1));
-                case COLUMN_TYPE_DOUBLE -> valueBuilder.setDoubleValue(rs.getDouble(i + 1));
-                case COLUMN_TYPE_STRING ->
-                        valueBuilder.setStringValue(Objects.requireNonNullElse(rs.getString(i + 1), ""));
-                case COLUMN_TYPE_BOOLEAN -> valueBuilder.setBooleanValue(rs.getBoolean(i + 1));
-                case COLUMN_TYPE_DATE, COLUMN_TYPE_DATETIME -> valueBuilder
-                        .setDateValue(Objects.requireNonNullElse(rs.getTimestamp(i + 1), "").toString());
-                default -> throw new IllegalArgumentException(
-                        "Unsupported column type: " + i + ": " + columnTypeMap[i]);
-            }
-
-            rowBuilder.putValues(columnList.get(i).getName(), valueBuilder.build());
-        }
-        return rowBuilder.build();
-    }
-
     public QueryResponse executeQuery(Query query, Connection con) {
         switch (query.getQueryCase()) {
             case RAW -> {
@@ -177,13 +124,13 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 int updateCount = 0;
                 if (con != null) {
                     if (isSelect) {
-                        rows = jdbcTemplate.query((sql), this::rawQueryMapper, con);
+                        rows = jdbcTemplate.query((sql), new TypedResultSetExtractor(), con);
                     } else {
                         updateCount = jdbcTemplate.update((sql), con);
                     }
                 } else {
                     if (isSelect) {
-                        rows = jdbcTemplate.query((sql), this::rawQueryMapper);
+                        rows = jdbcTemplate.query((sql), new TypedResultSetExtractor());
                     } else {
                         updateCount = jdbcTemplate.update((sql));
                     }
@@ -205,20 +152,13 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
                 logger.info("Executing SQL query: {} with Params: {}", field(sql.getExpression()),
                         Arrays.toString(sql.getParameter()));
 
-                final List<Column> columnList = selectQuery.getColumnList();
-                final int numColumns = columnList.size();
-                final ColumnType[] columnTypeMap = new ColumnType[numColumns];
-                for (int i = 0; i < numColumns; i++) {
-                    columnTypeMap[i] = columnList.get(i).getType();
-                }
+                final List<TypedColumn> columnList = selectQuery.getColumnList();
                 List<Row> rows;
                 if (con != null) {
-                    rows = jdbcTemplate.query(sql.getExpression(),
-                            (rs, rowNum) -> selectQueryMapper(rs, rowNum, numColumns, columnTypeMap, columnList), con,
+                    rows = jdbcTemplate.query(sql.getExpression(), new TypedResultSetExtractor(columnList), con,
                             sql.getParameter());
                 } else {
-                    rows = jdbcTemplate.query(sql.getExpression(),
-                            (rs, rowNum) -> selectQueryMapper(rs, rowNum, numColumns, columnTypeMap, columnList),
+                    rows = jdbcTemplate.query(sql.getExpression(), new TypedResultSetExtractor(columnList),
                             sql.getParameter());
                 }
                 return QueryResponse.newBuilder()
@@ -227,29 +167,38 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             }
             case INSERT -> {
                 final InsertQuery insertQuery = query.getInsert();
-                final boolean shouldGenerateId = insertQuery.hasIdColumn();
-                final ParameterizedExpression sql;
+                final boolean shouldReturnFields = insertQuery.getReturningFieldsCount() > 0;
+                final ParameterizedExpression sql = queryHelper.getInsertQuery(insertQuery);
 
-                long id;
-                if (shouldGenerateId) {
-                    final String idColumn = insertQuery.getIdColumn();
-                    sql = queryHelper.getInsertQuery(insertQuery, idColumn);
-                } else {
-                    sql = queryHelper.getInsertQuery(insertQuery);
-                }
-
+                Row result = null;
+                long updated = 0;
                 logger.info("Executing SQL query: {} with Params: {}", field(sql.getExpression()),
                         Arrays.toString(sql.getParameter()));
 
                 if (con != null) {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), con, sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    if (shouldReturnFields) {
+                        result = jdbcTemplate.update(sql.getExpression(), con,
+                                insertQuery.getReturningFieldsList().toArray(new String[0]),
+                                new GrpcRowMapper(null, insertQuery.getReturningFieldsList()), sql.getParameter());
+                    } else {
+                        updated = jdbcTemplate.update(sql.getExpression(), con, sql.getParameter());
+                    }
+
                 } else {
-                    id = shouldGenerateId ? jdbcTemplate.insert(sql.getExpression(), sql.getParameter()) : jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    if (shouldReturnFields) {
+                        result = jdbcTemplate.update(sql.getExpression(),
+                                insertQuery.getReturningFieldsList().toArray(new String[0]),
+                                new GrpcRowMapper(null, insertQuery.getReturningFieldsList()), sql.getParameter());
+                    } else {
+                        updated = jdbcTemplate.update(sql.getExpression(), sql.getParameter());
+                    }
                 }
 
                 InsertQueryResult.Builder insertQueryBuilder = InsertQueryResult.newBuilder();
-                if (shouldGenerateId) {
-                    insertQueryBuilder.setLastInsertId(id);
+                if (shouldReturnFields && result != null) {
+                    insertQueryBuilder.setRow(result);
+                } else {
+                    insertQueryBuilder.setAffectedRows(updated);
                 }
 
                 return QueryResponse.newBuilder()
@@ -315,7 +264,8 @@ public class DBAccessor extends QueryServiceGrpc.QueryServiceImplBase {
             final Duration DEBOUNCE_INTERVAL = Duration.ofMillis(100);
             final AtomicLong lastTimerReset = new AtomicLong(System.nanoTime() - DEBOUNCE_INTERVAL.toNanos() - 1);
             private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-            final AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(scheduleStreamTimeout());
+            final AtomicReference<ScheduledFuture<?>> streamTimeoutFuture = new AtomicReference<>(
+                    scheduleStreamTimeout());
 
             @Override
             public void onNext(QueryRequest request) {

@@ -144,48 +144,84 @@ public class StreamJdbcTemplate extends JdbcTemplate {
         }, con));
     }
 
-    public long insert(String sql, Connection con, @Nullable Object... args) throws DataAccessException {
-        return this.insert(sql, newArgPreparedStatementSetter(args), con);
-    }
-
-    public long insert(String sql, @Nullable PreparedStatementSetter pss, Connection con) throws DataAccessException {
-        return this.insert(new SimplePreparedStatementCreator(sql), pss, con);
-    }
-
-    private long insert(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss, Connection con)
+    public <T> T update(String sql, Connection con, String[] returningFields, RowMapper<T> rowMapper,
+            @Nullable Object... args)
             throws DataAccessException {
+        return update(sql, newArgPreparedStatementSetter(args), returningFields, rowMapper, con);
+    }
 
-        Assert.notNull(psc, "PreparedStatementCreator must not be null");
+    public <T> T update(String sql, @Nullable PreparedStatementSetter pss, String[] returningFields,
+            RowMapper<T> rowMapper, Connection con) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, rowMapper, con);
+    }
 
-        return execute(psc, ps -> {
+    public <T> T update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            RowMapper<T> rowMapper, Connection con) throws DataAccessException {
+        return execute(psc, (ps) -> {
+            T row = null;
             try {
                 if (pss != null) {
                     pss.setValues(ps);
                 }
-                ResultSet rs = ps.executeQuery();
-                return rs.next() ? rs.getLong(1) : 0;
+                ps.executeUpdate();
             } finally {
                 if (pss instanceof ParameterDisposer) {
                     ((ParameterDisposer) pss).cleanupParameters();
                 }
             }
+            ResultSet keys = ps.getGeneratedKeys();
+            if (keys != null) {
+                try {
+                    if (keys.next()) {
+                        row = rowMapper.mapRow(keys, 1);
+                    }
+                } finally {
+                    closeResultSet(keys);
+                }
+            }
+
+            return row;
         }, con);
     }
 
-    public long insert(String sql, @Nullable Object... args) throws DataAccessException {
-        return this.insert(sql, this.newArgPreparedStatementSetter(args));
+    public <T> T update(String sql, String[] returningFields, RowMapper<T> rowMapper, @Nullable Object... args)
+            throws DataAccessException {
+        return update(sql, newArgPreparedStatementSetter(args), returningFields, rowMapper);
     }
 
-    public long insert(String sql, PreparedStatementSetter pss) throws DataAccessException {
-        Connection con = null;
-        try {
-            con = this.getConnection();
-            return this.insert(sql, pss, con);
-        } finally {
-            this.closeConnection(con);
-        }
+    public <T> T update(String sql, @Nullable PreparedStatementSetter pss, String[] returningFields,
+            RowMapper<T> rowMapper) throws DataAccessException {
+        return update(new SimplePreparedStatementCreator(sql, returningFields), pss, rowMapper);
     }
 
+    public <T> T update(final PreparedStatementCreator psc, @Nullable final PreparedStatementSetter pss,
+            RowMapper<T> rowMapper) throws DataAccessException {
+        return execute(psc, (ps) -> {
+            T row = null;
+            try {
+                if (pss != null) {
+                    pss.setValues(ps);
+                }
+                ps.executeUpdate();
+            } finally {
+                if (pss instanceof ParameterDisposer) {
+                    ((ParameterDisposer) pss).cleanupParameters();
+                }
+            }
+            ResultSet keys = ps.getGeneratedKeys();
+            if (keys != null) {
+                try {
+                    if (keys.next()) {
+                        row = rowMapper.mapRow(keys, 1);
+                    }
+                } finally {
+                    closeResultSet(keys);
+                }
+            }
+
+            return row;
+        });
+    }
 
     @Nullable
     private <T> T execute(StatementCallback<T> action, Connection con) throws DataAccessException {
@@ -259,15 +295,21 @@ public class StreamJdbcTemplate extends JdbcTemplate {
     private static class SimplePreparedStatementCreator implements PreparedStatementCreator, SqlProvider {
 
         private final String sql;
+        private final String[] returningFields;
 
-        public SimplePreparedStatementCreator(String sql) {
+        public SimplePreparedStatementCreator(String sql, @Nullable String... returningFields) {
             Assert.notNull(sql, "SQL must not be null");
             this.sql = sql;
+            this.returningFields = returningFields;
         }
 
         @Override
         public PreparedStatement createPreparedStatement(Connection con) throws SQLException {
-            return con.prepareStatement(this.sql);
+            if (returningFields != null && returningFields.length > 0) {
+                return con.prepareStatement(this.sql, returningFields);
+            } else {
+                return con.prepareStatement(this.sql);
+            }
         }
 
         @Override

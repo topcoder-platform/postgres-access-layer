@@ -3,17 +3,15 @@ package com.topcoder.pal.interceptor;
 import io.grpc.*;
 import io.grpc.ServerCall.Listener;
 import net.devh.boot.grpc.server.interceptor.GrpcGlobalServerInterceptor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @GrpcGlobalServerInterceptor
 public class ServerLogInterceptor implements ServerInterceptor {
 
-    private final Logger logger = LoggerFactory.getLogger(this.getClass());
+    // private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     @Override
     public <ReqT, RespT> Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> call, Metadata headers,
-                                                      ServerCallHandler<ReqT, RespT> next) {
+            ServerCallHandler<ReqT, RespT> next) {
 
         ServerCall<ReqT, RespT> listener = new ForwardingServerCall.SimpleForwardingServerCall<ReqT, RespT>(call) {
 

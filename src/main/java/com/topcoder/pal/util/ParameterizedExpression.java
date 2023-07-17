@@ -10,6 +10,6 @@ import lombok.Setter;
 @Getter
 @Setter
 public class ParameterizedExpression {
-    public String expression;
-    public Object[] parameter = new Object[0];
+    private String expression;
+    private Object[] parameter = new Object[0];
 }
